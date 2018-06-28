@@ -47,8 +47,6 @@ begin {
                 "CMS-JSON" { 
                     $UnpackedCredential = Get-Content -LiteralPath $CredNode.Path | Unprotect-CmsMessage | ConvertFrom-Json
                     Write-Output ([pscredential]::new($UnpackedCredential.Username, ($UnpackedCredential.Password | ConvertTo-SecureString -AsPlainText -Force)))
-					Remove-Variable UnpackedCredential
-					[gc]::Collect()
                 }
                 "CLIXML" {
                     Import-CLIXML -LiteralPath (Join-Path $PSScriptRoot $CredNode.Path -Resolve)
@@ -113,7 +111,7 @@ begin {
 
                         $ADParams["Identity"] = $SourceNode.Identity
                         If ($SourceNode.Recursive) {
-                            $ADParams["Recurse"] = [convert]::ToBoolean($SourceNode.Recursive)
+                            $ADParams["Recursive"] = [convert]::ToBoolean($SourceNode.Recursive)
                         }
 						Write-Verbose "[ADGroup] $(If ($ADParams["Recurse"]) {"Recursively retrieving"} Else {"Retrieving"}) members of $($ADParams["Identity"])..."
                         Get-ADGroupMember @ADParams
@@ -206,6 +204,16 @@ process {
 		Write-Verbose "Retrieving current member list for comparison..."
         # Retrieve current members of the group to determine what needs to be added/removed
         $CurrentMemberList = Get-ADGroupMember @ADParams
+		
+		If ($CurrentMemberList) {
+		
+			Write-Debug "Current member list has $($CurrentMemberList.Count) members."
+		
+		} Else {
+		
+			$CurrentMemberList = @()
+		
+		}
 
 		Write-Debug "Comparing between computed and current member lists."
         # Perform the comparison between target/current members
@@ -219,13 +227,14 @@ process {
         Write-Verbose "Synchronizing changes with Active Directory..."
 
 		If ($DeltaRemMemberList) {
-			Remove-ADGroupMember @ADParams -Members $DeltaRemMemberList
+			Remove-ADGroupMember @ADParams -Members $DeltaRemMemberList -Confirm:$False
 		}
         If ($DeltaAddMemberList) {
-			Add-ADGroupMember @ADParams -Members $DeltaAddMemberList
+			Add-ADGroupMember @ADParams -Members $DeltaAddMemberList -Confirm:$False
 		}
 		
         Write-Verbose "Membership update for `"$($TargetNode.Identity)`" complete."
+		Remove-Variable TargetNode,TargetGroup,ADParams,CandidateMembers,ExcludedMembers,ComputedMemberList,CurrentMemberList,MemberComparison,DeltaAddMemberList,DeltaRemMemberList
     }
 }
 
